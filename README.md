@@ -20,10 +20,7 @@ Reference: https://docs.unsloth.ai/new/gpt-oss-reinforcement-learning
 
 ### Install dependencies
 
-- CPU/default install (from `pyproject.toml`):
-  - `uv pip install -e .`
-
-- Optional: install CUDA-enabled PyTorch wheels (pick the CUDA that matches your driver). Example for CUDA 12.1:
+- Install CUDA-enabled PyTorch wheels (pick the CUDA that matches your driver). Example for CUDA 12.1:
   - `uv pip install --upgrade --index-url https://download.pytorch.org/whl/cu121 torch torchvision torchaudio`
 
 Notes:
