@@ -1,20 +1,22 @@
-from unsloth import FastLanguageModel
-import torch
-import numpy as np
 import ast
+from contextlib import contextmanager
+import gc
+import os
+from pathlib import Path
+import signal
+import statistics
 import sys
 import sysconfig
-from pathlib import Path
-import types
-import os
-import gc
 import time
-import statistics
-import signal
-from contextlib import contextmanager
-from transformers import TextStreamer
+import types
+
 from datasets import Dataset
+import numpy as np
+import torch
+from transformers import TextStreamer
 from trl import GRPOConfig, GRPOTrainer
+from unsloth import FastLanguageModel
+
 max_seq_length = 640 # Can increase for longer RL output
 lora_rank = 4 # Larger rank = smarter, but slower
 model, tokenizer = FastLanguageModel.from_pretrained(
