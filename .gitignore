@@ -212,3 +212,6 @@ unsloth/
 unsloth_compiled_cache/
 unsloth-zoo/
 unsloth-zoo-cache/
+
+# wandb
+wandb/

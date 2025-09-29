@@ -18,4 +18,5 @@ dependencies = [
   "tokenizers",
   "trl==0.22.2",
   "datasets",
+  "wandb"
 ]

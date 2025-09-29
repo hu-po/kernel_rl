@@ -12,14 +12,17 @@ import time
 import types
 import logging
 
+from unsloth import FastLanguageModel
 from datasets import Dataset
 import numpy as np
 import torch
 from transformers import TextStreamer
 from trl import GRPOConfig, GRPOTrainer
-from unsloth import FastLanguageModel
+import wandb
 
-
+os.environ["WANDB_ENTITY"] = "hug"
+os.environ["WANDB_PROJECT"] = "kernel_rl"
+wandb.login()
 
 @dataclass
 class TrainingConfig:
@@ -135,25 +138,6 @@ def main(config: TrainingConfig):
             "relative_imports": relative_count,
         }
 
-
-    output_function = {}
-    exec(sample, {}, output_function)
-    output_function["matmul"]
-
-
-    output_function["matmul"] = types.FunctionType(output_function["matmul"].__code__, {})
-
-    def import_numpy():
-        np.matmul
-        print("Success")
-
-    import_numpy()
-    import_numpy = types.FunctionType(import_numpy.__code__, {})
-    try:
-        import_numpy()
-    except Exception as e:
-        print(str(e))
-
     def create_locked_down_function(function):
         output_function = {}
         exec(function, {}, output_function)
@@ -214,6 +198,7 @@ def main(config: TrainingConfig):
                 "timeouts" : timed_out,
             }
 
+    benchmarker = Benchmarker()
     prompt = """
     Create a new fast matrix multiplication function using only native Python code.
     You are given a list of list of numbers.
@@ -378,7 +363,7 @@ def main(config: TrainingConfig):
         max_completion_length = max_completion_length,
         max_steps = 100,
         save_steps = 100,
-        report_to = "none", # Can use Weights & Biases
+        report_to = "wandb",
         output_dir = "outputs",
     )
 
