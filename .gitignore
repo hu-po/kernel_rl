@@ -215,3 +215,6 @@ unsloth-zoo-cache/
 
 # wandb
 wandb/
+
+# outputs
+outputs

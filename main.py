@@ -28,11 +28,11 @@ wandb.login()
 class TrainingConfig:
     max_seq_length: int = 640 # increase for longer output
     """ Maximum sequence length output for the model """
-    lora_rank: int = 4 # larger rank = smarter, but slower (> 0 ! Suggested 8, 16, 32, 64, 128)
+    lora_rank: int = 8 # larger rank = smarter, but slower (> 0 ! Suggested 8, 16, 32, 64, 128)
     model_name: str = "unsloth/gpt-oss-20b"
     load_in_4bit: bool = True # false for LoRA 16bit
     offload_embedding: bool = True # reduces VRAM by 1GB
-    random_state: int = 3407
+    random_state: int = 42
     reasoning_effort: str = "low" # "low", "medium", "high"
     num_trials: int = 3 # number of trials per benchmark 
 
