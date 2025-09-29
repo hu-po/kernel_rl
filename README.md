@@ -5,7 +5,7 @@ RL for kernel generation with Unsloth GRPO.
 - Main training script: `main.py`
 - Original reference code: `reference.py`
 - Original notebook: https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/gpt-oss-(20B)-GRPO.ipynb
--Blog post: https://docs.unsloth.ai/new/gpt-oss-reinforcement-learning
+- Blog post: https://docs.unsloth.ai/new/gpt-oss-reinforcement-learning
 
 ```bash
 # install uv
