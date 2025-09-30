@@ -15,8 +15,6 @@ import logging
 from unsloth import FastLanguageModel
 from datasets import Dataset
 import numpy as np
-import torch
-from transformers import TextStreamer
 from trl import GRPOConfig, GRPOTrainer
 import wandb
 
@@ -26,17 +24,23 @@ wandb.login()
 
 @dataclass
 class TrainingConfig:
+    prompt: str = """
+Create a new fast matrix multiplication function using only native Python code.
+You are given a list of list of numbers.
+Output your function in backticks using the format below:
+```python
+def matmul(A, B):
+    return [[sum(a*b for a, b in zip(row, col)) for col in list(zip(*B))] for row in A]
+```
+""".strip()
+
     max_seq_length: int = 640 # increase for longer output
-    """ Maximum sequence length output for the model """
     lora_rank: int = 4 # larger rank = smarter, but slower (> 0 ! Suggested 8, 16, 32, 64, 128)
     model_name: str = "unsloth/gpt-oss-20b"
     load_in_4bit: bool = True # false for LoRA 16bit
     offload_embedding: bool = True # reduces VRAM by 1GB
-    random_state: int = 333
-    reasoning_effort: str = "low" # "low", "medium", "high"
+    random_state: int = 334
     num_trials: int = 3 # number of trials per benchmark 
-
-    # Training hyperparameters (moved out of hardcoded GRPOConfig)
     temperature: float = 1.0
     learning_rate: float = 5e-5
     weight_decay: float = 0.01
@@ -52,9 +56,7 @@ class TrainingConfig:
     report_to: str = "wandb"
     output_dir: str = "outputs"
 
-
 def main(config: TrainingConfig):
-    logging.basicConfig(level=logging.INFO)
     log = logging.getLogger(__name__)
     log.info(f"Training config: {config}")
 
@@ -237,30 +239,6 @@ def main(config: TrainingConfig):
             }
 
     benchmarker = Benchmarker()
-    prompt = """
-    Create a new fast matrix multiplication function using only native Python code.
-    You are given a list of list of numbers.
-    Output your function in backticks using the format below:
-    ```python
-    def matmul(A, B):
-        return [[sum(a*b for a, b in zip(row, col)) for col in list(zip(*B))] for row in A]
-    ```
-    """.strip()
-    log.info(f"Prompt: \n---\n{prompt}\n---\n")
-
-    text = tokenizer.apply_chat_template(
-        [{"role": "user", "content": prompt}],
-        tokenize = False,
-        add_generation_prompt = True,
-        reasoning_effort = config.reasoning_effort,
-    )
-
-    _ = model.generate(
-        **tokenizer(text, return_tensors = "pt").to("cuda"),
-        temperature = 1.0,
-        max_new_tokens = 512,
-        streamer = TextStreamer(tokenizer, skip_prompt = False),
-    )
 
     def extract_function(text):
         if text.count("```") >= 2:
@@ -278,7 +256,6 @@ def main(config: TrainingConfig):
             score = 0
             response = completion[0]["content"]
             function = extract_function(response)
-            print(function)
             if function is not None:
                 ok, info = check_only_stdlib_imports(function)
             if function is None or "error" in info:
@@ -295,7 +272,6 @@ def main(config: TrainingConfig):
     def no_cheating(completions, **kwargs):
         scores = []
         for completion in completions:
-            score = 0
             response = completion[0]["content"]
             function = extract_function(response)
             if function is not None:
@@ -377,12 +353,8 @@ def main(config: TrainingConfig):
             scores.append(score)
         return scores
 
-
-    dataset = Dataset.from_list([{"prompt" : [{"role": "user", "content": prompt.strip()}], "answer" : 0}]*1000)
-    maximum_length = len(tokenizer(prompt.strip())["input_ids"])
-    log.info(f"Maximum length: {maximum_length}")
-    log.info(f"Dataset element 0: {dataset[0]}")
-
+    dataset = Dataset.from_list([{"prompt" : [{"role": "user", "content": config.prompt.strip()}], "answer" : 0}]*1000)
+    maximum_length = len(tokenizer(config.prompt.strip())["input_ids"])
     max_prompt_length = maximum_length + 1 # + 1 just in case!
     max_completion_length = config.max_seq_length - max_prompt_length
 
@@ -420,19 +392,6 @@ def main(config: TrainingConfig):
 
     trainer.train()
 
-    text = tokenizer.apply_chat_template(
-        [{"role": "user", "content": prompt}],
-        tokenize = False,
-        add_generation_prompt = True,
-        reasoning_effort = "low",
-    )
-
-    _ = model.generate(
-        **tokenizer(text, return_tensors = "pt").to("cuda"),
-        temperature = 1.0,
-        max_new_tokens = 1024,
-        streamer = TextStreamer(tokenizer, skip_prompt = False),
-    )
 
 if __name__ == "__main__":
     config = TrainingConfig()
