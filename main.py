@@ -28,13 +28,29 @@ wandb.login()
 class TrainingConfig:
     max_seq_length: int = 640 # increase for longer output
     """ Maximum sequence length output for the model """
-    lora_rank: int = 8 # larger rank = smarter, but slower (> 0 ! Suggested 8, 16, 32, 64, 128)
+    lora_rank: int = 4 # larger rank = smarter, but slower (> 0 ! Suggested 8, 16, 32, 64, 128)
     model_name: str = "unsloth/gpt-oss-20b"
     load_in_4bit: bool = True # false for LoRA 16bit
     offload_embedding: bool = True # reduces VRAM by 1GB
-    random_state: int = 42
+    random_state: int = 333
     reasoning_effort: str = "low" # "low", "medium", "high"
     num_trials: int = 3 # number of trials per benchmark 
+
+    # Training hyperparameters (moved out of hardcoded GRPOConfig)
+    temperature: float = 1.0
+    learning_rate: float = 5e-5
+    weight_decay: float = 0.01
+    warmup_ratio: float = 0.1
+    lr_scheduler_type: str = "linear"
+    optim: str = "adamw_8bit"
+    logging_steps: int = 1
+    per_device_train_batch_size: int = 1
+    gradient_accumulation_steps: int = 1  # Increase to 4 for smoother training
+    num_generations: int = 2 # Decrease if out of memory
+    max_steps: int = 1000
+    save_steps: int = 100
+    report_to: str = "wandb"
+    output_dir: str = "outputs"
 
 
 def main(config: TrainingConfig):
@@ -72,10 +88,32 @@ def main(config: TrainingConfig):
         return A, A.tolist(), B, B.tolist()
 
     def calculate_difference(pred, real):
-        if pred is None: return 3, 3
+        # Return a large penalty (3, 3) when we cannot compare.
+        if pred is None:
+            return 3, 3
         assert real is not None
-        difference = pred - real
-        amax_error = float(np.amax(difference))
+
+        # Convert to numpy arrays to standardize types (lists, tensors, etc.).
+        try:
+            pred_arr = np.asarray(pred, dtype=float)
+        except Exception:
+            return 3, 3
+        try:
+            real_arr = np.asarray(real, dtype=float)
+        except Exception:
+            return 3, 3
+
+        # Shapes must match for elementwise difference.
+        if pred_arr.shape != real_arr.shape:
+            return 3, 3
+
+        # Guard against NaN/Inf outputs from model code.
+        if not np.all(np.isfinite(pred_arr)):
+            return 3, 3
+
+        difference = pred_arr - real_arr
+        # Use absolute max error; MSE already squares.
+        amax_error = float(np.max(np.abs(difference)))
         mse_error  = float(np.mean(np.square(difference)))
         return amax_error, mse_error
 
@@ -349,22 +387,22 @@ def main(config: TrainingConfig):
     max_completion_length = config.max_seq_length - max_prompt_length
 
     training_args = GRPOConfig(
-        temperature = 1.0,
-        learning_rate = 5e-5,
-        weight_decay = 0.01,
-        warmup_ratio = 0.1,
-        lr_scheduler_type = "linear",
-        optim = "adamw_8bit",
-        logging_steps = 1,
-        per_device_train_batch_size = 1,
-        gradient_accumulation_steps = 1, # Increase to 4 for smoother training
-        num_generations = 2, # Decrease if out of memory
+        temperature = config.temperature,
+        learning_rate = config.learning_rate,
+        weight_decay = config.weight_decay,
+        warmup_ratio = config.warmup_ratio,
+        lr_scheduler_type = config.lr_scheduler_type,
+        optim = config.optim,
+        logging_steps = config.logging_steps,
+        per_device_train_batch_size = config.per_device_train_batch_size,
+        gradient_accumulation_steps = config.gradient_accumulation_steps,
+        num_generations = config.num_generations,
         max_prompt_length = max_prompt_length,
         max_completion_length = max_completion_length,
-        max_steps = 100,
-        save_steps = 100,
-        report_to = "wandb",
-        output_dir = "outputs",
+        max_steps = config.max_steps,
+        save_steps = config.save_steps,
+        report_to = config.report_to,
+        output_dir = config.output_dir,
     )
 
     trainer = GRPOTrainer(
