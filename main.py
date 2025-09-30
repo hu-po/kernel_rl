@@ -1,3 +1,34 @@
+"""
+This script trains a model with GRPO using a composite reward made up of four
+independent components:
+
+- function_works:
+  Goal: Ensure the completion forms a valid, lockable Python function.
+  Logic: Extract, static-check imports, attempt to build the function.
+  Range: Approximately [-2.0, +1.0].
+    - -2.0 if missing/invalid function or AST parse error
+    - -0.5 if creation fails at runtime
+    - +1.0 if creation succeeds
+
+- no_cheating:
+  Goal: Discourage importing non-stdlib modules (e.g., NumPy, Torch).
+  Logic: 1.0 if only stdlib imports; -20.0 otherwise (or if no function).
+  Range: {-20.0, +1.0}. Heavy penalty dominates to strongly prevent cheating.
+
+- correctness_check:
+  Goal: Encourage numerically correct outputs on random test cases.
+  Logic: Compare predicted matrix product vs. NumPy ground truth using absolute
+  max error and mean squared error with thresholds near machine precision.
+  Range: Approximately [-6.0, +6.0], combining two sub-scores.
+
+- speed_check:
+  Goal: Reward faster-than-NumPy implementations; penalize slower ones.
+  Logic: Benchmark median time vs. NumPy and transform the ratio into a score
+  scaled by 1/100 and clipped to [-10, +10]. Faster gets positive, slower
+  negative. Multiple trials and cache-thrashing reduce noise.
+
+"""
+
 import ast
 from dataclasses import dataclass
 from contextlib import contextmanager
@@ -142,6 +173,11 @@ def main(config: TrainingConfig):
     _STDLIB_SET = _stdlib_names()
 
     def check_only_stdlib_imports(code: str):
+        """
+        Uses Python AST to list absolute imports and checks
+        that they belong to the standard library. Relative imports are counted but not
+        penalized here. Returns a boolean and details used by other rewards.
+        """
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
@@ -179,6 +215,13 @@ def main(config: TrainingConfig):
         }
 
     def create_locked_down_function(function):
+        """
+        Safely materializes the generated function by
+        executing code with empty locals/globals and then re-creating the function
+        with empty globals via `types.FunctionType`. This prevents access to global
+        state and minimizes cheating avenues (e.g., importing optimized libraries or
+        reading external variables).
+        """
         output_function = {}
         exec(function, {}, output_function)
         new_matmul = output_function["matmul"]
@@ -212,6 +255,12 @@ def main(config: TrainingConfig):
             return int(self.buffer[::4096].sum())
 
         def benchmark(self, function, arguments):
+            """
+            Runs a function under a strict timeout and with
+            cache-thrashing between trials to reduce caching effects. Produces timing
+            statistics (median/mean/stdev in nanoseconds), plus exception and timeout
+            counts. Used by the speed reward to compare against NumPy.
+            """
             assert len(arguments) == self.loops
             samples = []
             exceptions = []
@@ -241,6 +290,11 @@ def main(config: TrainingConfig):
     benchmarker = Benchmarker()
 
     def extract_function(text):
+        """
+        Parses a completion and extracts a Python function enclosed
+        in triple backticks. It expects a signature starting with `def matmul(A, B):`.
+        If extraction fails, many rewards default to penalties or zero.
+        """
         if text.count("```") >= 2:
             first = text.find("```") + 3
             second = text.find("```", first)
