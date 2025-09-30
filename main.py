@@ -1,34 +1,3 @@
-"""
-This script trains a model with GRPO using a composite reward made up of four
-independent components:
-
-- function_works:
-  Goal: Ensure the completion forms a valid, lockable Python function.
-  Logic: Extract, static-check imports, attempt to build the function.
-  Range: Approximately [-2.0, +1.0].
-    - -2.0 if missing/invalid function or AST parse error
-    - -0.5 if creation fails at runtime
-    - +1.0 if creation succeeds
-
-- no_cheating:
-  Goal: Discourage importing non-stdlib modules (e.g., NumPy, Torch).
-  Logic: 1.0 if only stdlib imports; -20.0 otherwise (or if no function).
-  Range: {-20.0, +1.0}. Heavy penalty dominates to strongly prevent cheating.
-
-- correctness_check:
-  Goal: Encourage numerically correct outputs on random test cases.
-  Logic: Compare predicted matrix product vs. NumPy ground truth using absolute
-  max error and mean squared error with thresholds near machine precision.
-  Range: Approximately [-6.0, +6.0], combining two sub-scores.
-
-- speed_check:
-  Goal: Reward faster-than-NumPy implementations; penalize slower ones.
-  Logic: Benchmark median time vs. NumPy and transform the ratio into a score
-  scaled by 1/100 and clipped to [-10, +10]. Faster gets positive, slower
-  negative. Multiple trials and cache-thrashing reduce noise.
-
-"""
-
 import ast
 from dataclasses import dataclass
 from contextlib import contextmanager
@@ -70,7 +39,7 @@ def matmul(A, B):
     model_name: str = "unsloth/gpt-oss-20b"
     load_in_4bit: bool = True # false for LoRA 16bit
     offload_embedding: bool = True # reduces VRAM by 1GB
-    random_state: int = 334
+    random_state: int = 333
     num_trials: int = 3 # number of trials per benchmark 
     temperature: float = 1.0
     learning_rate: float = 5e-5
@@ -86,6 +55,63 @@ def matmul(A, B):
     save_steps: int = 100
     report_to: str = "wandb"
     output_dir: str = "outputs"
+
+    """
+    Composite reward made up of four independent components:
+
+    - function_works:
+        Goal: Ensure the completion forms a valid, lockable Python function.
+        Logic: Extract, static-check imports, attempt to build the function.
+        Range: Approximately [-2.0, +1.0].
+            - -2.0 if missing/invalid function or AST parse error
+            - -0.5 if creation fails at runtime
+            - +1.0 if creation succeeds
+
+    - no_cheating:
+        Goal: Discourage importing non-stdlib modules (e.g., NumPy, Torch).
+        Logic: 1.0 if only stdlib imports; -20.0 otherwise (or if no function).
+        Range: {-20.0, +1.0}. Heavy penalty dominates to strongly prevent cheating.
+
+    - correctness_check:
+        Goal: Encourage numerically correct outputs on random test cases.
+        Logic: Compare predicted matrix product vs. NumPy ground truth using absolute
+        max error and mean squared error with thresholds near machine precision.
+        Range: Approximately [-6.0, +6.0], combining two sub-scores.
+
+    - speed_check:
+        Goal: Reward faster-than-NumPy implementations; penalize slower ones.
+        Logic: Benchmark median time vs. NumPy and transform the ratio into a score
+        scaled by 1/100 and clipped to [-10, +10]. Faster gets positive, slower
+        negative. Multiple trials and cache-thrashing reduce noise.
+    """
+
+    # Reward config: function_works
+    fw_invalid_score: float = -2.0       # no/invalid function or AST error
+    fw_creation_fail_score: float = -0.5 # exec/types.FunctionType failed
+    fw_success_score: float = 1.0        # function created successfully
+
+    # Reward config: no_cheating
+    nc_ok_score: float = 1.0             # only stdlib imports
+    nc_penalty_score: float = -20.0      # non-stdlib import found
+
+    # Reward config: correctness_check
+    # Absolute error thresholds and scores applied in descending order.
+    cc_abs_err_thresholds: tuple = (3.0, 2.0, 1.0, 0.5)
+    cc_abs_err_scores:    tuple = (-3.0, -2.5, -2.0, -1.0)
+    # Epsilon scaling: eps_base = cc_eps_multiplier * np.finfo(float64).eps
+    # Then compare against [cc_eps_high_factor * eps_base, eps_base]
+    cc_eps_multiplier: float = 100.0
+    cc_eps_high_factor: float = 100.0
+    # Scores for epsilon tiers: [>= high, >= low, else]
+    cc_eps_scores: tuple = (0.0, 1.0, 3.0)
+    cc_invalid_score: float = 0.0        # when invalid function or AST error here
+    cc_runtime_fail_score: float = -2.0  # when execution of pred fails
+
+    # Reward config: speed_check
+    sc_scale_divisor: float = 100.0      # divide ratios by this scalar
+    sc_clip_limit: float = 10.0          # clip final score to [-limit, +limit]
+    sc_invalid_score: float = 0.0        # when invalid or function can't be created
+
 
 def main(config: TrainingConfig):
     log = logging.getLogger(__name__)
@@ -313,13 +339,13 @@ def main(config: TrainingConfig):
             if function is not None:
                 ok, info = check_only_stdlib_imports(function)
             if function is None or "error" in info:
-                score = -2.0
+                score = config.fw_invalid_score
             else:
                 try:
                     new_matmul = create_locked_down_function(function)
-                    score = 1.0
+                    score = config.fw_success_score
                 except:
-                    score = -0.5
+                    score = config.fw_creation_fail_score
             scores.append(score)
         return scores
 
@@ -332,7 +358,7 @@ def main(config: TrainingConfig):
                 ok, info = check_only_stdlib_imports(function)
             else:
                 ok = False
-            scores.append(1.0 if ok else -20.0) # Penalize heavily!
+            scores.append(config.nc_ok_score if ok else config.nc_penalty_score)
         return scores
 
     def correctness_check(completions, **kwargs):
@@ -344,38 +370,36 @@ def main(config: TrainingConfig):
             if function is not None:
                 ok, info = check_only_stdlib_imports(function)
             if function is None or "error" in info:
-                scores.append(0)
+                scores.append(config.cc_invalid_score)
                 continue
             try:
                 new_matmul = create_locked_down_function(function)
             except:
-                scores.append(0)
+                scores.append(config.cc_invalid_score)
                 continue
             A, A_list, B, B_list = generate_random_matrices(seed = np.random.randint(10000), n = 128)
             try:
                 pred = new_matmul(A_list, B_list)
             except:
-                scores.append(-2.0)
+                scores.append(config.cc_runtime_fail_score)
                 continue
             true = np.matmul(A, B)
             amax_error, mse_error = calculate_difference(pred, true)
 
-            machine_epsilon = 100*np.finfo(np.float64).eps
-            if   amax_error >= 3:   score = -3.0
-            elif amax_error >= 2:   score = -2.5
-            elif amax_error >= 1:   score = -2.0
-            elif amax_error >= 0.5: score = -1.0
-            elif amax_error >= 100*machine_epsilon: score = 0.0
-            elif amax_error >= machine_epsilon: score = 1.0
-            else: score = 3.0
+            eps_base = config.cc_eps_multiplier * np.finfo(np.float64).eps
 
-            if   mse_error >= 3:   score += -3.0
-            elif mse_error >= 2:   score += -2.5
-            elif mse_error >= 1:   score += -2.0
-            elif mse_error >= 0.5: score += -1.0
-            elif mse_error >= 100*machine_epsilon: score += 0.0
-            elif mse_error >= machine_epsilon: score += 1.0
-            else: score += 3.0
+            def _score_err(err_val):
+                for thr, sc in zip(config.cc_abs_err_thresholds, config.cc_abs_err_scores):
+                    if err_val >= thr:
+                        return sc
+                if err_val >= (config.cc_eps_high_factor * eps_base):
+                    return config.cc_eps_scores[0]
+                if err_val >= eps_base:
+                    return config.cc_eps_scores[1]
+                return config.cc_eps_scores[2]
+
+            score = _score_err(amax_error)
+            score += _score_err(mse_error)
             scores.append(score)
         return scores
 
@@ -388,27 +412,27 @@ def main(config: TrainingConfig):
             if function is not None:
                 ok, info = check_only_stdlib_imports(function)
             if function is None or "error" in info:
-                scores.append(0)
+                scores.append(config.sc_invalid_score)
                 continue
             try:
                 new_matmul = create_locked_down_function(function)
             except:
-                scores.append(0)
+                scores.append(config.sc_invalid_score)
                 continue
             A, A_list, B, B_list = generate_random_matrices(seed = np.random.randint(10000), n = 256)
             numpy_results = benchmarker.benchmark(np.matmul,  [(A, B)])
             new_results   = benchmarker.benchmark(new_matmul, [(A_list, B_list)])
 
-            negative = -(new_results["median_ns"] / numpy_results["median_ns"]) / 100
-            positive = +(numpy_results["median_ns"] / new_results["median_ns"]) / 100
+            negative = -(new_results["median_ns"] / numpy_results["median_ns"]) / config.sc_scale_divisor
+            positive = +(numpy_results["median_ns"] / new_results["median_ns"]) / config.sc_scale_divisor
             score = negative if new_results["median_ns"] >= numpy_results["median_ns"] else positive
-            if score >= 10:  score = 10
-            if score <= -10: score = -10
+            if score >=  config.sc_clip_limit:  score =  config.sc_clip_limit
+            if score <= -config.sc_clip_limit: score = -config.sc_clip_limit
             scores.append(score)
         return scores
 
-    dataset = Dataset.from_list([{"prompt" : [{"role": "user", "content": config.prompt.strip()}], "answer" : 0}]*1000)
-    maximum_length = len(tokenizer(config.prompt.strip())["input_ids"])
+    dataset = Dataset.from_list([{"prompt" : [{"role": "user", "content": config.prompt}], "answer" : 0}]*1000)
+    maximum_length = len(tokenizer(config.prompt)["input_ids"])
     max_prompt_length = maximum_length + 1 # + 1 just in case!
     max_completion_length = config.max_seq_length - max_prompt_length
 
