@@ -22,8 +22,10 @@ source .venv/bin/activate
 uv pip install -r pyproject.toml
 # check version of cuda on machine
 nvidia-smi
-# install cuda enabled torch
-uv pip install --upgrade --index-url https://download.pytorch.org/whl/cu121 torch torchvision torchaudio
+# install cuda enabled torch (3090)
+uv pip install  torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# install cuda enabled torch (H100)
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu129
 # login to wandb
 wandb login
 huggingface-cli login
