@@ -48,9 +48,9 @@ def matmul(A, B):
     lr_scheduler_type: str = "linear"
     optim: str = "adamw_8bit"
     logging_steps: int = 1
-    per_device_train_batch_size: int = 64
-    gradient_accumulation_steps: int = 4  # Increase to 4 for smoother training
-    num_generations: int = 4 # Decrease if out of memory
+    per_device_train_batch_size: int = 32
+    gradient_accumulation_steps: int = 2  # Increase to 4 for smoother training
+    num_generations: int = 2 # Decrease if out of memory
     max_steps: int = 1000
     save_steps: int = 100
     report_to: str = "wandb"
