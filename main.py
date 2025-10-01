@@ -42,13 +42,13 @@ def matmul(A, B):
     random_state: int = 333
     num_trials: int = 3 # number of trials per benchmark 
     temperature: float = 1.0
-    learning_rate: float = 5e-5
+    learning_rate: float = 1e-4
     weight_decay: float = 0.01
-    warmup_ratio: float = 0.1
+    warmup_ratio: float = 0.08
     lr_scheduler_type: str = "linear"
     optim: str = "adamw_8bit"
     logging_steps: int = 1
-    per_device_train_batch_size: int = 4
+    per_device_train_batch_size: int = 64
     gradient_accumulation_steps: int = 4  # Increase to 4 for smoother training
     num_generations: int = 4 # Decrease if out of memory
     max_steps: int = 1000
