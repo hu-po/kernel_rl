@@ -36,24 +36,24 @@ def matmul(A, B):
 """.strip()
 
     max_seq_length: int = 512 # increase for longer output
-    lora_rank: int = 16 # larger rank = smarter, but slower (> 0 ! Suggested 8, 16, 32, 64, 128)
+    lora_rank: int = 4 # larger rank = smarter, but slower (> 0 ! Suggested 8, 16, 32, 64, 128)
     model_name: str = "unsloth/gpt-oss-20b"
     load_in_4bit: bool = True # false for LoRA 16bit
     offload_embedding: bool = True # reduces VRAM by 1GB
     random_state: int = 999
     num_trials: int = 3 # number of trials per benchmark 
     temperature: float = 1.2
-    learning_rate: float = 1e-4
+    learning_rate: float = 5e-5
     weight_decay: float = 0.01
     warmup_ratio: float = 0.1
     lr_scheduler_type: str = "linear"
     optim: str = "adamw_8bit"
     logging_steps: int = 1
-    per_device_train_batch_size: int = 128
-    gradient_accumulation_steps: int = 4  # Increase to 4 for smoother training
-    num_generations: int = 128 # Decrease if out of memory
-    max_steps: int = 264
-    save_steps: int = 128
+    per_device_train_batch_size: int = 1
+    gradient_accumulation_steps: int = 1  # Increase to 4 for smoother training
+    num_generations: int = 2 # Decrease if out of memory
+    max_steps: int = 10000
+    save_steps: int = 1000
     report_to: str = "wandb"
     output_dir: str = "outputs"
 
