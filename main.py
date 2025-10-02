@@ -36,7 +36,7 @@ def matmul(A, B):
 """.strip()
 
     max_seq_length: int = 512 # increase for longer output
-    lora_rank: int = 32 # larger rank = smarter, but slower (> 0 ! Suggested 8, 16, 32, 64, 128)
+    lora_rank: int = 16 # larger rank = smarter, but slower (> 0 ! Suggested 8, 16, 32, 64, 128)
     model_name: str = "unsloth/gpt-oss-20b"
     load_in_4bit: bool = True # false for LoRA 16bit
     offload_embedding: bool = True # reduces VRAM by 1GB
