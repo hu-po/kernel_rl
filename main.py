@@ -41,7 +41,7 @@ def matmul(A, B):
     offload_embedding: bool = True # reduces VRAM by 1GB
     random_state: int = 333
     num_trials: int = 3 # number of trials per benchmark 
-    temperature: float = 1.8
+    temperature: float = 1.0
     learning_rate: float = 1e-4
     weight_decay: float = 0.01
     warmup_ratio: float = 0.08
