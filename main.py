@@ -27,6 +27,7 @@ class TrainingConfig:
     prompt: str = """
 Create a new fast matrix multiplication function using only native Python code.
 You are given a list of list of numbers.
+Do not use docstrings.
 Output your function in backticks using the format below:
 ```python
 def matmul(A, B):
@@ -34,25 +35,25 @@ def matmul(A, B):
 ```
 """.strip()
 
-    max_seq_length: int = 640 # increase for longer output
+    max_seq_length: int = 512 # increase for longer output
     lora_rank: int = 32 # larger rank = smarter, but slower (> 0 ! Suggested 8, 16, 32, 64, 128)
     model_name: str = "unsloth/gpt-oss-20b"
     load_in_4bit: bool = True # false for LoRA 16bit
     offload_embedding: bool = True # reduces VRAM by 1GB
-    random_state: int = 333
+    random_state: int = 999
     num_trials: int = 3 # number of trials per benchmark 
     temperature: float = 1.0
-    learning_rate: float = 1e-4
+    learning_rate: float = 5e-5
     weight_decay: float = 0.01
-    warmup_ratio: float = 0.08
+    warmup_ratio: float = 0.1
     lr_scheduler_type: str = "linear"
     optim: str = "adamw_8bit"
     logging_steps: int = 1
-    per_device_train_batch_size: int = 1
+    per_device_train_batch_size: int = 3
     gradient_accumulation_steps: int = 4  # Increase to 4 for smoother training
     num_generations: int = 6 # Decrease if out of memory
-    max_steps: int = 1000
-    save_steps: int = 100
+    max_steps: int = 264
+    save_steps: int = 128
     report_to: str = "wandb"
     output_dir: str = "outputs"
 
